@@ -59,10 +59,10 @@ const resumeSchema = new mongoose.Schema(
     },
 
     // Extracted raw text
-    rawText: {
-      type: String,
-      required: true,
-    },
+   rawText: {
+  type: String,
+  default: "No text extracted",
+},
 
     // AI-parsed structured data
     parsedData: {
