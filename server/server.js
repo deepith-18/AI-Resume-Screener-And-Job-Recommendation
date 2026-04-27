@@ -15,17 +15,19 @@ const resumeRoutes = require('./routes/resumeRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const { errorHandler, notFound } = require('./utils/errorHandler');
 
-// ✅ Initialize App
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Setup Directories
+// 🔥 IMPORTANT DEBUG (remove later if needed)
+console.log("MONGO_URI:", process.env.MONGO_URI);
+
+// ✅ Ensure uploads folder exists
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// ✅ Global Middleware
+// ✅ Middleware
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
@@ -34,8 +36,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // ✅ Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
 });
 app.use('/api', limiter);
 
@@ -47,18 +49,28 @@ app.use('/api/auth', authRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/jobs', jobRoutes);
 
-// Health Check
+// ✅ Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// ✅ Error Handling (Must be last)
+// ✅ Error Handling
 app.use(notFound);
 app.use(errorHandler);
 
-// ✅ Database & Server Start
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-  });
-});
+// ✅ Start Server ONLY after DB connects
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+
+  } catch (err) {
+    console.error("❌ Failed to start server:", err.message);
+    process.exit(1);
+  }
+};
+
+startServer();

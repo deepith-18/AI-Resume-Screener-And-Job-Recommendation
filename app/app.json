@@ -1,37 +1,41 @@
 {
   "expo": {
-    "name": "ResumeAI",
+    "name": "CareerLens AI",
     "slug": "resume-screener",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "resumeapp",
     "splash": {
-      "backgroundColor": "#EFF6FF"
+      "image": "./assets/splashscreen_logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F9FAFB"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourcompany.resumeai"
+      "bundleIdentifier": "com.deepith.careerlens"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#2563EB"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#D94E28"
       },
-      "package": "com.yourcompany.resumeai",
-      "permissions": [
-        "READ_EXTERNAL_STORAGE"
-      ]
+      "package": "com.deepith.careerlens"
     },
     "plugins": [
       "expo-font",
-      [
-        "expo-document-picker",
-        {
-          "iCloudContainerEnvironment": "Production"
-        }
-      ]
-    ]
+      "expo-document-picker",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d4e232da-ee14-4ac7-8db4-f3c7dd19a18a"
+      }
+    },
+    "owner": "deepu_1718"
   }
 }

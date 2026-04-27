@@ -30,7 +30,7 @@ export const Card: React.FC<CardProps> = ({
   delay = 0,
   animated = true,
   variant = 'default',
-  padding = 16,
+  padding = 20,
 }) => {
   const opacity = useRef(new Animated.Value(animated ? 0 : 1)).current;
   const translateY = useRef(new Animated.Value(animated ? 16 : 0)).current;
@@ -122,21 +122,31 @@ export default Card;
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius['2xl'], // smoother corners
     backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    marginBottom: 16, // 🔥 important spacing between cards
   },
+
   variant_default: {
+    ...Shadows.sm, // softer shadow (web style)
+  },
+
+  variant_elevated: {
     ...Shadows.md,
   },
-  variant_elevated: {
-    ...Shadows.lg,
-  },
+
   variant_flat: {
     backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
   },
+
   variant_outlined: {
     borderWidth: 1,
     borderColor: Colors.border,
-    ...Shadows.sm,
+    backgroundColor: Colors.surface,
   },
 });

@@ -1,259 +1,198 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+/**
+ * screens/HomeScreen.tsx
+ * Student Dashboard - FIXED React Native Components
+ */
+
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
-  RefreshControl,
   TouchableOpacity,
-  Animated,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  useFocusEffect,
-  useNavigation,
-  CommonActions,
-} from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { listResumes, checkHealth } from '../services/api';
 
-import { listResumes } from '../services/api';
-import { ResumeAnalysis, HomeStackParamList } from '../utils/types';
-import { Colors, Typography, Spacing } from '../utils/theme';
-import { SkeletonCard } from '../components/Skeleton';
+import Card from '../components/Card';
 import Button from '../components/Button';
+import ScoreRing from '../components/ScoreRing';
+import { Colors } from '../utils/theme';
 
-type HomeNavProp = NativeStackNavigationProp<HomeStackParamList, 'HomeScreen'>;
+export default function HomeScreen() {
+  const [resumes, setResumes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const navigation = useNavigation<any>();
 
-const HomeScreen: React.FC = () => {
-  const navigation = useNavigation<HomeNavProp>();
-
-  // State
-  const [resumes, setResumes] = useState<ResumeAnalysis[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-
-  // Animation Refs
-  const headerOpacity = useRef(new Animated.Value(0)).current;
-  const headerTranslate = useRef(new Animated.Value(-10)).current;
+  // ✅ API Health Check Debug
+  useEffect(() => {
+    console.log("🛠️ Starting API Connection Test...");
+    checkHealth()
+      .then(res => {
+        if (res) {
+          console.log("✅ API STATUS: Connected Successfully!");
+        } else {
+          console.log("⚠️ API STATUS: Online, but returned unexpected response.");
+        }
+      })
+      .catch(err => {
+        console.log("❌ API CONNECTION ERROR:", err.message);
+      });
+  }, []);
 
   const fetchResumes = async () => {
     try {
-      const data = await listResumes();
-      setResumes(data || []);
-    } catch (e) {
-      console.error('Error loading resumes:', e);
+      const res = await listResumes();
+      setResumes(Array.isArray(res) ? res : []);
+    } catch (err) {
+      console.log("❌ Fetching Resumes Failed:", err);
+      setResumes([]);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
-  // Initial Load & Animation
-  useEffect(() => {
-    fetchResumes();
+  useEffect(() => { fetchResumes(); }, []);
+  useFocusEffect(useCallback(() => { fetchResumes(); }, []));
 
-    Animated.parallel([
-      Animated.timing(headerOpacity, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.timing(headerTranslate, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [headerOpacity, headerTranslate]);
+  const totalResumes = resumes.length;
+  const avgScore = totalResumes > 0 
+    ? Math.round(resumes.reduce((acc, curr) => acc + (curr.overallScore || curr.analysis?.overall_score || 0), 0) / totalResumes) 
+    : 0;
 
-  // Refresh data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchResumes();
-    }, [])
-  );
+  const displayedResumes = showAll ? resumes : resumes.slice(0, 2);
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchResumes();
-  };
-
-  const handleResumePress = (resume: ResumeAnalysis) => {
-    if (resume.analysisStatus === 'completed') {
-      navigation.navigate('ResumeAnalysis', {
-        resumeId: resume.resumeId,
-      });
+  const handleNavigateToRoadmap = () => {
+    if (resumes.length > 0 && resumes[0].analysisStatus === 'completed') {
+      navigation.navigate('JobRecommendations', { analysisData: resumes[0] });
+    } else {
+      navigation.navigate('Upload');
     }
   };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#D94E28" /></View>;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary} // Optional: Matches your theme
-          />
-        }
-      >
-        {/* HEADER */}
-        <Animated.View
-          style={[
-            styles.header,
-            {
-              opacity: headerOpacity,
-              transform: [{ translateY: headerTranslate }],
-            },
-          ]}
-        >
-          <Text style={styles.greeting}>Good day 👋</Text>
-          <Text style={styles.title}>Resume Screener</Text>
-          <Text style={styles.subtitle}>
-            Upload a resume and let AI find jobs
-          </Text>
-        </Animated.View>
-
-        {/* CTA CARD */}
-        <View style={styles.ctaCard}>
-          <View>
-            <Text style={styles.ctaTitle}>Analyze Resume</Text>
-            <Text style={styles.ctaSubtitle}>PDF or DOCX</Text>
-          </View>
-
-          <Button
-            label="Upload"
-            size="sm"
-            onPress={() =>
-              navigation.dispatch(
-                CommonActions.navigate({ name: 'Upload' })
-              )
-            }
-          />
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* BRANDING & GREETING */}
+        <View style={styles.header}>
+          <Text style={styles.brandText}>CareerLens AI</Text>
+          <Text style={styles.welcome}>Hello, Deepith 👋</Text>
+          <Text style={styles.subtitle}>Ready to level up your career today?</Text>
         </View>
 
-        {/* RESUME LIST */}
-        {isLoading ? (
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
-        ) : resumes.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No resumes found</Text>
+        {/* PROGRESS OVERVIEW */}
+        <Card style={styles.mainInsightCard}>
+          <View style={styles.insightRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.insightTitle}>Overall Profile Strength</Text>
+              <Text style={styles.insightSub}>Your average score across {totalResumes} iterations.</Text>
+              {/* ✅ FIXED: Changed <div> to <View> */}
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelBadgeText}>{avgScore > 70 ? 'Industry Ready' : 'Intermediate'}</Text>
+              </View>
+            </View>
+            <ScoreRing score={avgScore} size={85} strokeWidth={8} />
           </View>
-        ) : (
-          resumes.map((resume) => (
-            <TouchableOpacity
-              key={resume._id}
-              style={styles.item}
-              activeOpacity={0.7}
-              onPress={() => handleResumePress(resume)}
-            >
-              <Text style={styles.itemText} numberOfLines={1}>
-                {resume.fileName}
-              </Text>
-              <Text style={styles.statusText}>
-                {resume.analysisStatus}
-              </Text>
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
-};
+        </Card>
 
-export default HomeScreen;
+        {/* QUICK ACTIONS GRID */}
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.actionGrid}>
+          <TouchableOpacity style={styles.actionItem} onPress={() => navigation.navigate('Upload')}>
+            <View style={[styles.actionIcon, { backgroundColor: '#E0F2FE' }]}><Text style={styles.emoji}>📤</Text></View>
+            <Text style={styles.actionLabel}>Upload</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionItem} 
+            onPress={() => resumes.length > 0 ? navigation.navigate('JobRecommendations', { analysisData: resumes[0] }) : navigation.navigate('Upload')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#F0FDF4' }]}><Text style={styles.emoji}>💼</Text></View>
+            <Text style={styles.actionLabel}>Jobs</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionItem} onPress={handleNavigateToRoadmap}>
+            <View style={[styles.actionIcon, { backgroundColor: '#FEF9C3' }]}><Text style={styles.emoji}>🗺️</Text></View>
+            <Text style={styles.actionLabel}>Roadmap</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* RECENT ANALYSES */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Analyses</Text>
+          {totalResumes > 2 && (
+            <TouchableOpacity onPress={() => setShowAll(!showAll)}>
+              <Text style={styles.viewAll}>{showAll ? 'Show Less' : 'View All'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {displayedResumes.map((item, index) => {
+          const score = item.overallScore || item.analysis?.overall_score || 0;
+          return (
+            <TouchableOpacity 
+              key={item._id || index} 
+              onPress={() => navigation.navigate('ResumeAnalysis', { resumeId: item._id })}
+            >
+              <Card style={styles.resumeItem}>
+                <View style={styles.itemRow}>
+                  <View style={styles.fileIconBox}><Text>📄</Text></View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.fileName} numberOfLines={1}>{item.fileName}</Text>
+                    <Text style={styles.fileDate}>{item.analysisStatus}</Text>
+                  </View>
+                  <Text style={[styles.itemScore, { color: score > 70 ? '#16A34A' : '#D94E28' }]}>{score}%</Text>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          );
+        })}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    backgroundColor: Colors.background 
-  },
-  scroll: { 
-    flex: 1 
-  },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
   scrollContent: { 
-    padding: Spacing.base 
+    paddingHorizontal: 20, 
+    paddingBottom: 40,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40 
   },
-  header: { 
-    marginBottom: 24 
-  },
-  greeting: { 
-    fontSize: 14, 
-    color: Colors.textTertiary,
-    marginBottom: 4
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  subtitle: { 
-    fontSize: 16, 
-    color: Colors.textSecondary,
-    marginTop: 4
-  },
-  ctaCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 24,
-    // Add a slight shadow for depth
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  ctaTitle: { 
-    color: '#fff', 
-    fontSize: 18,
-    fontWeight: 'bold' 
-  },
-  ctaSubtitle: { 
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2
-  },
-  item: {
-    padding: 18,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  itemText: {
-    flex: 1,
-    fontSize: 16,
-    color: Colors.textPrimary,
-    fontWeight: '500',
-  },
-  statusText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    textTransform: 'capitalize',
-    marginLeft: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: Colors.textTertiary,
-  },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { marginBottom: 24 },
+  brandText: { fontSize: 12, fontWeight: '800', color: '#D94E28', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 },
+  welcome: { fontSize: 26, fontWeight: 'bold', color: '#111827' },
+  subtitle: { fontSize: 14, color: '#6B7280', marginTop: 2 },
+  mainInsightCard: { padding: 20, backgroundColor: '#FFF', borderRadius: 24, marginBottom: 24, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  insightRow: { flexDirection: 'row', alignItems: 'center' },
+  insightTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  insightSub: { fontSize: 13, color: '#6B7280', marginTop: 4, marginBottom: 12 },
+  levelBadge: { backgroundColor: '#F0FDF4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, alignSelf: 'flex-start' },
+  levelBadgeText: { color: '#16A34A', fontSize: 11, fontWeight: 'bold' },
+  actionGrid: { flexDirection: 'row', gap: 16, marginBottom: 24 },
+  actionItem: { alignItems: 'center', width: '22%' },
+  actionIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  emoji: { fontSize: 22 },
+  actionLabel: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  viewAll: { color: '#D94E28', fontWeight: '700', fontSize: 13 },
+  resumeItem: { padding: 14, marginBottom: 10, borderRadius: 16, backgroundColor: '#FFF' },
+  itemRow: { flexDirection: 'row', alignItems: 'center' },
+  fileIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  fileName: { fontSize: 15, fontWeight: '600', color: '#111827' },
+  fileDate: { fontSize: 12, color: '#9CA3AF', marginTop: 2, textTransform: 'capitalize' },
+  itemScore: { fontSize: 16, fontWeight: 'bold' },
 });
