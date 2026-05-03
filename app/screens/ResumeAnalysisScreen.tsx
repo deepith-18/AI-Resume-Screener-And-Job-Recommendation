@@ -1,8 +1,3 @@
-/**
- * screens/ResumeAnalysisScreen.tsx
- * Comprehensive resume analysis results with tabs and stats
- */
-
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -31,38 +26,36 @@ type AnalysisNavProp = NativeStackNavigationProp<HomeStackParamList, 'ResumeAnal
 type TabType = 'overview' | 'skills' | 'experience';
 
 /**
- * HELPER FUNCTION
+ * HELPER FUNCTION: Extracts projects from raw text if AI structured data is missing
  */
 const extractProjects = (text: string = '') => {
   if (!text) return [];
-
   const sections = text.split('\n');
   const projects: { title: string; description: string }[] = [];
 
   for (let i = 0; i < sections.length; i++) {
     const line = sections[i].trim();
-
     if (
       line.toLowerCase().includes('project') ||
       line.includes('–') ||
       line.includes('-')
     ) {
       const description = sections[i + 1] || '';
-
       projects.push({
         title: line,
         description: description.trim(),
       });
     }
   }
-
   return projects.slice(0, 5);
 };
 
 export const ResumeAnalysisScreen: React.FC = () => {
   const route = useRoute<AnalysisRouteProp>();
   const navigation = useNavigation<AnalysisNavProp>();
-  const { resumeId } = route.params;
+  
+  // Receive initial data from route
+  const { resumeId, skills: routeSkills } = route.params;
 
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +73,9 @@ export const ResumeAnalysisScreen: React.FC = () => {
         
         if (isMounted) {
           setAnalysis(res);
+          // Debugging logs to verify backend output
+          console.log("🔥 API FULL DATA:", res);
+          console.log("🔥 EXTRACTED SKILLS:", res.parsedData?.skills);
         }
       } catch (err) {
         console.error("Fetch Error:", err);
@@ -96,6 +92,11 @@ export const ResumeAnalysisScreen: React.FC = () => {
     loadData();
     return () => { isMounted = false; };
   }, [resumeId]);
+
+  // ✅ FINAL CONSOLIDATED LOGIC
+  // Prioritize API data (pd), then fallback to routeSkills if API returns empty
+  const pd = analysis?.parsedData || {};
+  const displaySkills = (pd.skills && pd.skills.length > 0) ? pd.skills : (routeSkills || []);
 
   if (loading) {
     return (
@@ -115,15 +116,13 @@ export const ResumeAnalysisScreen: React.FC = () => {
     );
   }
 
-  const pd = analysis?.parsedData || {};
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header title="Resume Analysis" showBack />
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         
-        {/* STEP 2 — UPDATED HERO CARD */}
+        {/* HERO CARD */}
         <Card style={styles.heroCard}>
           <View style={styles.heroRow}>
             <View style={{ flex: 1 }}>
@@ -132,7 +131,7 @@ export const ResumeAnalysisScreen: React.FC = () => {
                 {pd?.experienceLevel || 'Software Engineer'}
               </Text>
               <Text style={styles.heroDesc}>
-                Profile analyzed. {pd?.skills?.length || 0} key attributes identified.
+                Profile analyzed. {displaySkills.length} key attributes identified.
               </Text>
             </View>
 
@@ -140,30 +139,33 @@ export const ResumeAnalysisScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* STEP 3 — STATS GRID */}
+        {/* STATS GRID */}
         <View style={styles.statsGrid}>
           <Card style={styles.statBox}>
-            <Text style={styles.statNumber}>{pd.skills?.length || 0}</Text>
+            <Text style={styles.statNumber}>{displaySkills.length}</Text>
             <Text style={styles.statLabel}>Total Skills</Text>
           </Card>
 
           <Card style={styles.statBox}>
             <Text style={styles.statNumber}>
-              {pd.skills?.filter((s:any)=>s.category==='technical').length || 0}
+              {displaySkills.filter((s: any) => {
+                const category = s.category?.toLowerCase() || s.type?.toLowerCase();
+                return category === 'technical' || !category;
+              }).length}
             </Text>
             <Text style={styles.statLabel}>Technical</Text>
           </Card>
 
           <Card style={styles.statBox}>
             <Text style={styles.statNumber}>
-              {pd.skills?.filter((s:any)=>s.category==='tool').length || 0}
+              {displaySkills.filter((s: any) => (s.category === 'tool' || s.type === 'tool')).length}
             </Text>
             <Text style={styles.statLabel}>Tools</Text>
           </Card>
 
           <Card style={styles.statBox}>
             <Text style={styles.statNumber}>
-              {pd.skills?.filter((s:any)=>s.category==='soft').length || 0}
+              {displaySkills.filter((s: any) => (s.category === 'soft' || s.type === 'soft')).length}
             </Text>
             <Text style={styles.statLabel}>Soft Skills</Text>
           </Card>
@@ -210,15 +212,17 @@ export const ResumeAnalysisScreen: React.FC = () => {
           </Card>
         )}
 
-        {/* Tab Content: Skills — STEP 4 UPDATED */}
+        {/* Tab Content: Skills */}
         {activeTab === 'skills' && (
           <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Technical Skills</Text>
+            <Text style={styles.sectionTitle}>Key Skills</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {pd.skills && pd.skills.length > 0 ? (
-                pd.skills.map((skill: any, index: number) => (
+              {displaySkills.length > 0 ? (
+                displaySkills.map((skill: any, index: number) => (
                   <View key={index} style={styles.skillChip}>
-                    <Text style={styles.skillChipText}>{skill.name}</Text>
+                    <Text style={styles.skillChipText}>
+                        {typeof skill === 'string' ? skill : skill.name}
+                    </Text>
                   </View>
                 ))
               ) : (
@@ -263,12 +267,24 @@ export const ResumeAnalysisScreen: React.FC = () => {
         )}
 
         {/* Action Button */}
-        <View style={{ marginBottom: 30, marginTop: 10 }}>
-          <Button
-            label="Find Recommended Jobs"
-            onPress={() => navigation.navigate('JobRecommendations', { resumeId })}
-          />
-        </View>
+     <View style={{ marginBottom: 30, marginTop: 10 }}>
+  <Button
+    label="Find Recommended Jobs"
+    onPress={() => {
+      // ✅ Transform skill objects into a clean array of strings
+      const skillNamesOnly = displaySkills.map((s: any) => 
+        typeof s === 'string' ? s : s.name
+      );
+
+      console.log("🚀 Navigating with skills:", skillNamesOnly);
+
+      navigation.navigate('JobRecommendations', { 
+        resumeId, 
+        skills: skillNamesOnly // ✅ Now passing ['java', 'python', ...]
+      });
+    }}
+  />
+</View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -279,7 +295,6 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, padding: 16 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   
-  // HERO & STATS (STEP 5 STYLES)
   heroCard: {
     padding: 20,
     marginBottom: 16,
@@ -293,7 +308,7 @@ const styles = StyleSheet.create({
   heroName: {
     fontSize: Typography.lg,
     fontWeight: 'bold',
-    color: Colors.textPrimary, // STEP 1 FIX
+    color: Colors.textPrimary,
   },
   heroSub: {
     fontSize: Typography.sm,
@@ -326,7 +341,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  // TABS (STEP 6 FIX)
   tabs: {
     flexDirection: 'row',
     backgroundColor: Colors.surfaceSecondary,
@@ -351,7 +365,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // CARD CONTENT
   card: {
     padding: 16,
     marginBottom: 16,
@@ -368,7 +381,6 @@ const styles = StyleSheet.create({
     color: '#444',
   },
 
-  // SKILL CHIPS (STEP 4/5)
   skillChip: {
     backgroundColor: Colors.primaryLighter,
     paddingVertical: 6,

@@ -1,9 +1,6 @@
-/**
- * services/api.ts — FINAL PRODUCTION VERSION
- * Optimized for React Native & Render Backend
- */
-
+import * as FileSystem from 'expo-file-system';
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ApiResponse,
   UploadResponse,
@@ -13,14 +10,13 @@ import {
 
 // ─── CONFIGURATION ──────────────────────────────────
 
-const BASE_URL = 'https://resume-backend-q39r.onrender.com';
+const BASE_URL = 'https://resume-backend-q39r.onrender.com'; 
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: `${BASE_URL}/api`,
-  timeout: 30000, 
+  timeout: 120000,
   headers: {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
+    'Accept': 'application/json',
   },
 });
 
@@ -50,8 +46,7 @@ apiClient.interceptors.response.use(
   }
 );
 
-// ─── RESUME API ─────────────────────────────────
-
+// ✅ FIXED UPLOAD (CRITICAL APK VERSION)
 export const uploadResume = async (
   fileUri: string,
   fileName: string,
@@ -59,101 +54,130 @@ export const uploadResume = async (
   onProgress?: (progress: number) => void
 ): Promise<UploadResponse> => {
   const formData = new FormData();
+  const userId = await AsyncStorage.getItem('user_id');
 
-  // @ts-ignore - Required for React Native FormData
-  formData.append('resume', {
-    uri: fileUri,
-    name: fileName,
-    type: mimeType,
-  });
+  let finalUri = fileUri;
 
-  const response = await apiClient.post<ApiResponse<UploadResponse>>(
-    '/resume/upload',
-    formData,
-    {
-      timeout: 120000, // Extra time for Render cold starts + File upload
-      headers: {
-        Accept: 'application/json',
-        // Note: Content-Type is intentionally omitted for FormData
-      },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-          onProgress(progress);
-        }
-      },
+  // 1. APK-safe path: copy content:// URIs into cache
+  if (fileUri.startsWith('content://')) {
+    // ✅ Use (FileSystem as any) to bypass the property error from your screenshot
+    const cacheDir = (FileSystem as any).cacheDirectory;
+    const newPath = cacheDir + (fileName || 'resume.pdf');
+
+    await FileSystem.copyAsync({
+      from: fileUri,
+      to: newPath,
+    });
+
+    const fileInfo = await FileSystem.getInfoAsync(newPath);
+    if (!fileInfo.exists) {
+      throw new Error('Local file cache failed');
     }
-  );
 
-  if (!response.data.success || !response.data.data) {
-    throw new Error(response.data.error || 'Upload failed');
+    finalUri = newPath;
   }
 
-  return response.data.data;
+  // 2. Setup File Object
+  const fileToUpload = {
+    uri: finalUri,
+    name: fileName || 'resume.pdf',
+    type: mimeType || 'application/pdf',
+  };
+
+  formData.append('resume', fileToUpload as any);
+  if (userId) formData.append('userId', userId);
+
+  try {
+    // 3. Prevent Render Cold Start
+    await checkHealth();
+
+    const response = await apiClient.post<ApiResponse<UploadResponse>>(
+      '/resume/upload',
+      formData,
+      {
+        timeout: 120000,
+        headers: {
+          // ✅ CRITICAL: Force headers for APK multipart stability
+          'Content-Type': 'multipart/form-data',
+          'Accept': 'application/json',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const progress = Math.round(
+              (progressEvent.loaded / progressEvent.total) * 100
+            );
+            onProgress(progress);
+          }
+        },
+      }
+    );
+
+    if (!response.data.success || !response.data.data) {
+      throw new Error(response.data.error || 'Upload failed');
+    }
+
+    return response.data.data;
+
+  } catch (error: any) {
+    console.error("❌ APK UPLOAD ERROR:", error.message);
+    throw error;
+  }
 };
 
-/**
- * ✅ FIXED getResume (Hybrid Mode)
- * Handles both {success:true, data:{}} AND raw {} responses from backend.
- */
+// ─── REMAINING FUNCTIONS ───────────────────────────
+
 export const getResume = async (resumeId: string): Promise<ResumeAnalysis> => {
   const response = await apiClient.get<any>(`/resume/${resumeId}`);
-
-  if (__DEV__) {
-    console.log("🔍 RAW GET_RESUME RESPONSE:", response.data);
-  }
-
-  // Check if response is wrapped in standard ApiResponse format
   if (response.data && response.data.hasOwnProperty('success')) {
     if (!response.data.success) {
       throw new Error(response.data.error || 'Failed to fetch resume');
     }
     return response.data.data;
   }
-
-  // Fallback: If backend just returns the object directly
   return response.data as ResumeAnalysis;
 };
 
-export const listResumes = async (): Promise<ResumeAnalysis[]> => {
-  const response = await apiClient.get<ApiResponse<ResumeAnalysis[]>>('/resume');
-
-  if (!response.data.success) {
-    throw new Error(response.data.error || 'Failed to fetch resumes');
-  }
-
-  return response.data.data || [];
-};
-
-export const analyzeResume = async (resumeId: string): Promise<ResumeAnalysis> => {
-  const response = await apiClient.post<ApiResponse<ResumeAnalysis>>(
-    `/resume/analyze/${resumeId}`
-  );
-
-  if (!response.data.success) {
-    throw new Error(response.data.error || 'Analysis failed');
-  }
-
-  return response.data.data || ({} as ResumeAnalysis);
-};
-
-// ─── JOB API ─────────────────────────────────
-
-export const getJobRecommendations = async (
-  resumeId: string,
-  refresh = false
-): Promise<JobMatchResult> => {
-  const url = `/jobs/recommend/${resumeId}${refresh ? '?refresh=true' : ''}`;
-  const response = await apiClient.post<ApiResponse<JobMatchResult>>(url);
-
-  if (!response.data.success || !response.data.data) {
-    throw new Error(response.data.error || 'Failed to generate recommendations');
-  }
-
+export const listResumes = async () => {
+  const userId = await AsyncStorage.getItem('user_id');
+  const response = await apiClient.get('/resume', { params: { userId } });
   return response.data.data;
 };
 
-// ─── UTILS & AUTH ───────────────────────────────
+export const deleteResume = async (resumeId: string) => {
+  const userId = await AsyncStorage.getItem('user_id');
+  await checkHealth();
+
+  let response;
+  try {
+    response = await apiClient.delete(`/resume/${resumeId}`, {
+      params: { userId },
+    });
+  } catch (error) {
+    await checkHealth();
+    response = await apiClient.delete(`/resume/${resumeId}`, {
+      params: { userId },
+    });
+  }
+
+  if (!response.data?.success) {
+    throw new Error(response.data?.error || 'Failed to delete resume');
+  }
+
+  return response.data;
+};
+
+export const analyzeResume = async (resumeId: string): Promise<ResumeAnalysis> => {
+  const response = await apiClient.post<ApiResponse<ResumeAnalysis>>(`/resume/analyze/${resumeId}`);
+  if (!response.data.success) throw new Error(response.data.error || 'Analysis failed');
+  return response.data.data || ({} as ResumeAnalysis);
+};
+
+export const getJobRecommendations = async (resumeId: string, refresh = false): Promise<JobMatchResult> => {
+  const url = `/jobs/recommend/${resumeId}${refresh ? '?refresh=true' : ''}`;
+  const response = await apiClient.post<ApiResponse<JobMatchResult>>(url);
+  if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Failed to generate recommendations');
+  return response.data.data;
+};
 
 export const checkHealth = async (): Promise<boolean> => {
   try {
@@ -170,8 +194,8 @@ export const loginUser = async (email: string, password: string) => {
 };
 
 export const registerUser = async (name: string, email: string, password: string) => {
-  const response = await apiClient.post('/auth/register', { name, email, password });
-  return response.data;
+  const res = await apiClient.post('/auth/register', { name, email, password });
+  return res.data;
 };
 
 export default apiClient;

@@ -1,6 +1,6 @@
 /**
  * screens/ProfileScreen.tsx
- * Data-driven Profile Screen reflecting actual app usage and CareerLens analytics.
+ * Dynamic Profile Screen reflecting the logged-in user.
  */
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // ✅ Added for dynamic data
 
 import { checkHealth, listResumes } from '../services/api';
 import { Colors, Shadows, Typography } from '../utils/theme';
@@ -24,11 +25,16 @@ import Card from '../components/Card';
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   
-  // State for Real App Data
+  // ✅ DYNAMIC USER STATE
+  const [user, setUser] = useState({
+    name: 'Student',
+    email: 'user@careerlens.ai',
+    initials: 'ST'
+  });
+
   const [resumeData, setResumeData] = useState<any[]>([]);
   const [serverStatus, setServerStatus] = useState('Checking...');
   const [stats, setStats] = useState({
-    totalSkills: 0,
     topScore: 0,
     topRole: 'N/A'
   });
@@ -38,6 +44,7 @@ const ProfileScreen: React.FC = () => {
 
   useEffect(() => {
     fetchProfileData();
+    loadUserFromStorage(); // ✅ Load name and email on mount
 
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -45,23 +52,41 @@ const ProfileScreen: React.FC = () => {
     ]).start();
   }, []);
 
+  // ✅ NEW: Load User Data from AsyncStorage
+  const loadUserFromStorage = async () => {
+    try {
+      const name = await AsyncStorage.getItem('user_name');
+      const email = await AsyncStorage.getItem('user_email');
+      
+      if (name) {
+        // Generate initials (e.g., "Deepith N" -> "DN")
+        const nameParts = name.trim().split(' ');
+        const initials = nameParts.length > 1 
+          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+          : nameParts[0].substring(0, 2).toUpperCase();
+
+        setUser({
+          name: name,
+          email: email || 'No email provided',
+          initials: initials
+        });
+      }
+    } catch (e) {
+      console.log("Error loading profile info", e);
+    }
+  };
+
   const fetchProfileData = async () => {
     try {
       const resumes = await listResumes();
       const formattedResumes = Array.isArray(resumes) ? resumes : [];
       setResumeData(formattedResumes);
 
-      // --- CALCULATE REAL ANALYTICS ---
       if (formattedResumes.length > 0) {
-        let allSkills = new Set();
         let highestScore = 0;
         let bestRole = 'None';
 
         formattedResumes.forEach(res => {
-          // Count unique skills
-          res.parsedData?.skills?.forEach((s: any) => allSkills.add(s.name));
-          
-          // Find Top Match
           const score = res.overallScore || res.analysis?.overall_score || 0;
           if (score > highestScore) {
             highestScore = score;
@@ -70,7 +95,6 @@ const ProfileScreen: React.FC = () => {
         });
 
         setStats({
-          totalSkills: allSkills.size,
           topScore: highestScore,
           topRole: bestRole
         });
@@ -88,7 +112,11 @@ const ProfileScreen: React.FC = () => {
       { text: 'Cancel', style: 'cancel' },
       { 
         text: 'Logout', 
-        onPress: () => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Login' }] })) 
+        onPress: async () => {
+          // ✅ CLEAR STORAGE ON LOGOUT
+          await AsyncStorage.multiRemove(['user_name', 'user_email', 'auth_token']);
+          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Login' }] }));
+        }
       },
     ]);
   };
@@ -98,13 +126,13 @@ const ProfileScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
           
-          {/* 1. PROFESSIONAL IDENTITY */}
+          {/* 1. DYNAMIC PROFESSIONAL IDENTITY */}
           <View style={styles.headerSection}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>DN</Text>
+              <Text style={styles.avatarText}>{user.initials}</Text>
             </View>
-            <Text style={styles.name}>Deepith N</Text>
-            <Text style={styles.email}>deepithdeekshith@gmail.com</Text>
+            <Text style={styles.name}>{user.name}</Text>
+            <Text style={styles.email}>{user.email}</Text>
             <View style={styles.roleTag}>
               <Text style={styles.roleTagText}>{stats.topRole}</Text>
             </View>
@@ -116,10 +144,6 @@ const ProfileScreen: React.FC = () => {
             <Card style={styles.statBox}>
               <Text style={styles.statVal}>{resumeData.length}</Text>
               <Text style={styles.statLab}>Resumes</Text>
-            </Card>
-            <Card style={styles.statBox}>
-              <Text style={styles.statVal}>{stats.totalSkills}</Text>
-              <Text style={styles.statLab}>Skills Found</Text>
             </Card>
             <Card style={styles.statBox}>
               <Text style={[styles.statVal, { color: '#16A34A' }]}>{stats.topScore}%</Text>
@@ -170,6 +194,7 @@ const ProfileScreen: React.FC = () => {
   );
 };
 
+// ... Styles remain exactly as you provided
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8F9FA' },
   container: { padding: 20 },
@@ -180,23 +205,19 @@ const styles = StyleSheet.create({
   email: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   roleTag: { backgroundColor: '#FFF2F0', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 10, borderWidth: 1, borderColor: '#FFD7CF' },
   roleTagText: { color: '#D94E28', fontSize: 11, fontWeight: 'bold' },
-  
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#4B5563', marginBottom: 10, marginTop: 15, textTransform: 'uppercase', letterSpacing: 0.5 },
   statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 10 },
   statBox: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 16 },
   statVal: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
   statLab: { fontSize: 11, color: '#6B7280', marginTop: 2 },
-
   infoCard: { padding: 5, borderRadius: 16 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   infoLabel: { fontSize: 14, color: '#6B7280' },
   infoValue: { fontSize: 14, fontWeight: '600', color: '#111827' },
-
   menuCard: { padding: 5, borderRadius: 16 },
   menuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   menuText: { fontSize: 14, color: '#111827', fontWeight: '500' },
   chevron: { fontSize: 20, color: '#9CA3AF' },
-
   logoutBtn: { marginTop: 20, backgroundColor: '#FFF', padding: 16, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: '#FEE2E2' },
   logoutText: { color: '#DC2626', fontWeight: 'bold' },
   footerText: { textAlign: 'center', color: '#9CA3AF', fontSize: 11, marginTop: 25, marginBottom: 15 }

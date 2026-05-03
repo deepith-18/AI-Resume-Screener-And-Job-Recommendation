@@ -32,80 +32,90 @@ export const ROLE_LIBRARIES = [
   { title: "Aerospace Engineer", required: ["MATLAB", "CAD", "Thermodynamics", "Aerodynamics", "Simulink"] }
 ];
 
-export function generateRoleMatches(userSkills: { name: string; level: number }[]) {
-  // Normalize user skills for easier matching
-  const normalizedUserSkills = userSkills.map(s => ({
-    name: s.name.toLowerCase().trim(),
-    level: s.level
-  }));
+/**
+ * Generates ranked career matches based on unique user skills and proficiency.
+ */
+export function generateRoleMatches(userSkills: any[]) {
+  if (!Array.isArray(userSkills) || userSkills.length === 0) return [];
+
+  // Normalize user skills safely
+  const normalizedUserSkills = userSkills.map(s => {
+    let skillName = "";
+    if (typeof s === 'string') {
+      skillName = s;
+    } else if (s && typeof s === 'object') {
+      skillName = s.name || "";
+    }
+
+    return {
+      name: (skillName || "").toLowerCase().trim(),
+      level: s?.level || 70 
+    };
+  }).filter(s => s.name !== "");
 
   const matches = ROLE_LIBRARIES.map(role => {
-    let totalScore = 0;
-    let maxPossibleScore = role.required.length * 100;
-    
+    let proficiencySum = 0;
     const matchedSkills: string[] = [];
     const missingSkills: string[] = [];
 
     role.required.forEach(reqSkill => {
-      const normalizedReq = reqSkill.toLowerCase().trim();
+      const req = reqSkill.toLowerCase().trim();
       
-      // Look for an exact match or a partial match (e.g., "React" matching "ReactJS")
-      const found = normalizedUserSkills.find(s => 
-        s.name === normalizedReq || 
-        s.name.includes(normalizedReq) || 
-        normalizedReq.includes(s.name)
-      );
+      const found = normalizedUserSkills.find(s => {
+        const user = s.name;
+
+        // ✅ IMPROVED ALIASING (Prevents "No Matches" for common naming differences)
+        return (
+          user === req ||
+          user.includes(req) || 
+          req.includes(user) ||
+          (user === "js" && req === "javascript") ||
+          (user === "react" && req === "reactjs") ||
+          (user === "node" && req === "nodejs") ||
+          (user === "mongodb" && req === "mongo") ||
+          (user === "sql" && req.includes("sql")) ||
+          // ✅ New Engineering Aliases
+          (user === "cad" && req === "autocad") ||
+          (user === "ml" && req === "machine learning") ||
+          (user === "ai" && req === "artificial intelligence")
+        );
+      });
 
       if (found) {
-        totalScore += found.level;
+        proficiencySum += found.level;
         matchedSkills.push(reqSkill);
       } else {
         missingSkills.push(reqSkill);
       }
     });
 
-    // Scoring logic: 
-    // We base it on the percentage of skills matched, then factor in the levels.
-    let skillMatchRatio = matchedSkills.length / role.required.length;
-    let averageLevel = matchedSkills.length > 0 ? (totalScore / (matchedSkills.length * 100)) : 0;
+    // 1. Coverage Score (60% weight - slightly lowered to be more inclusive)
+    const coverage = matchedSkills.length / role.required.length;
     
-    // Final score is a mix of how many skills you have vs how good you are at them
-    let score = Math.round(((skillMatchRatio * 0.6) + (averageLevel * 0.4)) * 100);
+    // 2. Proficiency Score (40% weight)
+    const avgProficiency = matchedSkills.length > 0 ? (proficiencySum / matchedSkills.length) : 0;
+
+    let score = Math.round((coverage * 60) + ((avgProficiency / 100) * 40));
 
     return {
       title: role.title,
-      match_score: score,
+      match_score: Math.min(score, 98),
       required_skills: role.required,
       missing_skills: missingSkills,
       matched_skills: matchedSkills,
       reason: getReasonMessage(score)
     };
   })
-  // ✅ LOWER THRESHOLD: We show anything above 10% to ensure a long list
-  .filter(r => r.match_score > 10) 
-  .sort((a, b) => b.match_score - a.match_score)
-  // ✅ SLICE: Ensure we get a good amount of roles
-  .slice(0, 8); 
+  // ✅ RELAXED FILTER: Show roles with at least 1 skill so users don't see an empty screen
+  .filter(r => r.matched_skills.length >= 1) 
+  .sort((a, b) => b.match_score - a.match_score);
 
-  // If we still have very few matches, we show the top 5 closest roles regardless of score
-  if (matches.length < 3) {
-      return ROLE_LIBRARIES.slice(0, 5).map(r => ({
-          title: r.title,
-          match_score: 15,
-          required_skills: r.required,
-          missing_skills: r.required,
-          matched_skills: [],
-          reason: "Suggested Path"
-      }));
-  }
-
-  return matches;
+  return matches.slice(0, 6);
 }
 
 function getReasonMessage(score: number): string {
   if (score >= 80) return "Top Career Match";
   if (score >= 60) return "Strong Potential";
   if (score >= 40) return "Good Alternative";
-  if (score >= 20) return "Related Field";
   return "Exploratory Match";
 }

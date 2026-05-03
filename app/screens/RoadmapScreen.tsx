@@ -1,6 +1,7 @@
 // screens/RoadmapScreen.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Typography, BorderRadius } from '../utils/theme';
 import { ROADMAPS, getDynamicLinks } from '../utils/roadmap';
 import Card from '../components/Card';
@@ -10,11 +11,47 @@ import { Header } from '../components/Header';
 export const RoadmapScreen: React.FC = ({ route, navigation }: any) => {
   const role = route.params?.role;
   const roleTitle = role?.title || "Software Engineer";
+  const storageKey = `roadmap_completed_${roleTitle}`;
+  const [completedPhases, setCompletedPhases] = useState<number[]>([]);
   
   // Get static roadmap or use a default one
   const roadmapData = ROADMAPS[roleTitle] || ROADMAPS["Software Engineer"];
   // Generate dynamic links based on the EXACT role selected
   const dynamicLinks = getDynamicLinks(roleTitle);
+
+  useEffect(() => {
+    const loadCompletedPhases = async () => {
+      try {
+        const storedValue = await AsyncStorage.getItem(storageKey);
+        setCompletedPhases(storedValue ? JSON.parse(storedValue) : []);
+      } catch (error) {
+        console.log('❌ Failed to load roadmap progress', error);
+        setCompletedPhases([]);
+      }
+    };
+
+    loadCompletedPhases();
+  }, [storageKey]);
+
+  const handleMarkFinished = async (phaseIndex: number) => {
+    try {
+      const isAlreadyCompleted = completedPhases.includes(phaseIndex);
+      const nextCompletedPhases = isAlreadyCompleted
+        ? completedPhases.filter((index) => index !== phaseIndex)
+        : [...completedPhases, phaseIndex];
+
+      setCompletedPhases(nextCompletedPhases);
+      await AsyncStorage.setItem(storageKey, JSON.stringify(nextCompletedPhases));
+
+      Alert.alert(
+        isAlreadyCompleted ? 'Progress updated' : 'Phase completed',
+        isAlreadyCompleted ? 'Marked as not finished.' : 'Marked as finished successfully.'
+      );
+    } catch (error) {
+      console.log('❌ Failed to save roadmap progress', error);
+      Alert.alert('Error', 'Could not update roadmap progress.');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -49,6 +86,11 @@ export const RoadmapScreen: React.FC = ({ route, navigation }: any) => {
             </View>
             
             <Card style={styles.phaseCard}>
+              {completedPhases.includes(index) && (
+                <View style={styles.completedBadge}>
+                  <Text style={styles.completedBadgeText}>Finished</Text>
+                </View>
+              )}
               <View style={styles.badgeRow}>
                 <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>PHASE 0{index + 1}</Text></View>
                 <View style={styles.levelBadge}><Text style={styles.levelText}>{phase.level}</Text></View>
@@ -56,8 +98,13 @@ export const RoadmapScreen: React.FC = ({ route, navigation }: any) => {
               <Text style={styles.weekTitle}>{phase.title}</Text>
               <Text style={styles.weekDesc}>{phase.description}</Text>
               <Text style={styles.resourceText}>📚 <Text style={{fontWeight:'600'}}>Resources:</Text> {phase.resources}</Text>
-              <TouchableOpacity style={styles.finishBtn}>
-                <Text style={styles.finishBtnText}>Mark as Finished</Text>
+              <TouchableOpacity
+                style={[styles.finishBtn, completedPhases.includes(index) && styles.finishBtnActive]}
+                onPress={() => handleMarkFinished(index)}
+              >
+                <Text style={[styles.finishBtnText, completedPhases.includes(index) && styles.finishBtnTextActive]}>
+                  {completedPhases.includes(index) ? 'Marked as Finished' : 'Mark as Finished'}
+                </Text>
               </TouchableOpacity>
             </Card>
           </View>
@@ -117,6 +164,8 @@ const styles = StyleSheet.create({
   circleText: { color: Colors.primary, fontWeight: 'bold' },
   line: { width: 2, flex: 1, backgroundColor: '#E5E7EB', position: 'absolute', top: 30, bottom: -20 },
   phaseCard: { flex: 1, padding: 16, backgroundColor: '#FFF', borderRadius: 16 },
+  completedBadge: { alignSelf: 'flex-start', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 10 },
+  completedBadgeText: { color: '#16A34A', fontSize: 11, fontWeight: '700' },
   badgeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   phaseBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   phaseBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary },
@@ -127,6 +176,8 @@ const styles = StyleSheet.create({
   resourceText: { fontSize: 13, color: Colors.textPrimary, marginBottom: 16 },
   finishBtn: { borderWidth: 1, borderColor: Colors.border, padding: 10, borderRadius: 10, alignItems: 'center' },
   finishBtnText: { fontWeight: '700', fontSize: 14, color: Colors.textPrimary },
+  finishBtnActive: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  finishBtnTextActive: { color: '#15803D' },
   linksGrid: { gap: 12, marginTop: 10 },
   iconLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
   iconEmoji: { fontSize: 20, marginRight: 12 },

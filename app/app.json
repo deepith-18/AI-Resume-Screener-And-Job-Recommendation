@@ -24,7 +24,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#D94E28"
       },
-      "package": "com.deepith.careerlens"
+      "package": "com.deepith.careerlens",
+      "permissions": [
+        "INTERNET",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "usesCleartextTraffic": true
     },
     "plugins": [
       "expo-font",

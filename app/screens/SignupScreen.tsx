@@ -1,8 +1,3 @@
-/**
- * screens/SignupScreen.tsx
- * High-end, animated Signup experience for CareerLens AI.
- */
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -16,28 +11,72 @@ import {
   Animated,
   Dimensions,
   Easing,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Alert,
+  ActivityIndicator // Added for loading state
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Ensure this is installed
 import { Ionicons } from '@expo/vector-icons';
 import { Shadows } from '../utils/theme';
 import Button from '../components/Button';
 
-const { width, height } = Dimensions.get('window');
+import { registerUser } from '../services/api';
+
+const { width } = Dimensions.get('window');
 
 export default function SignupScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isFocused, setIsFocused] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false); // Added loading state
 
-  // ✅ 1. ANIMATION REFS
+  // ✅ NEW: HANDLE SIGNUP LOGIC
+const handleSignup = async () => {
+  if (!name || !email || !password) {
+    Alert.alert("Error", "Please fill in all fields");
+    return;
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  console.log("🧪 SIGNUP EMAIL:", cleanEmail);
+
+  setLoading(true);
+
+  try {
+    // Wake backend (important for Render)
+    await fetch("https://resume-backend-q39r.onrender.com/api/health");
+
+    const response = await registerUser(name, cleanEmail, password);
+
+    console.log("📥 SIGNUP RESPONSE:", response);
+
+    if (response && response.user) {
+      await AsyncStorage.setItem('user_id', response.user._id);
+      await AsyncStorage.setItem('user_name', response.user.name);
+      await AsyncStorage.setItem('user_email', cleanEmail);
+
+      navigation.navigate('Main');
+    } else {
+      Alert.alert("Error", "Signup failed");
+    }
+
+  } catch (error: any) {
+    console.log("❌ SIGNUP ERROR:", error);
+    Alert.alert("Signup Failed", error.message || "Try again");
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // --- ANIMATION LOGIC (Keep as is) ---
   const bgAnim1 = useRef(new Animated.Value(0)).current;
   const bgAnim2 = useRef(new Animated.Value(0)).current;
   const contentFade = useRef(new Animated.Value(0)).current;
   const contentMove = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    // Background Bokeh Loop
     const loop = (val: Animated.Value, duration: number) => {
       Animated.loop(
         Animated.sequence([
@@ -49,7 +88,6 @@ export default function SignupScreen({ navigation }: any) {
     loop(bgAnim1, 20000);
     loop(bgAnim2, 28000);
 
-    // Entrance Animation for Content
     Animated.parallel([
       Animated.timing(contentFade, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.spring(contentMove, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true })
@@ -67,15 +105,15 @@ export default function SignupScreen({ navigation }: any) {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* ✅ DYNAMIC BACKGROUND */}
+      {/* DYNAMIC BACKGROUND */}
       <View style={StyleSheet.absoluteFill}>
         <Animated.View style={[styles.bokeh, { 
-          backgroundColor: '#FFE5E0', // Career orange tint
+          backgroundColor: '#FFE5E0', 
           width: width * 1.4, height: width * 1.4, top: -100, right: -150,
           transform: [{ translateX: bX1 }, { translateY: bY1 }] 
         }]} />
         <Animated.View style={[styles.bokeh, { 
-          backgroundColor: '#E0F2FE', // Tech blue tint
+          backgroundColor: '#E0F2FE', 
           width: width * 1.2, height: width * 1.2, bottom: -100, left: -100,
           transform: [{ translateX: bX2 }] 
         }]} />
@@ -84,7 +122,6 @@ export default function SignupScreen({ navigation }: any) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: contentFade, transform: [{ translateY: contentMove }] }}>
           
-          {/* BRAND TOP */}
           <View style={styles.brandHeader}>
             <View style={styles.miniLogo}>
               <Ionicons name="rocket" size={18} color="#FFF" />
@@ -92,7 +129,6 @@ export default function SignupScreen({ navigation }: any) {
             <Text style={styles.miniBrandText}>CareerLens <Text style={{color: '#111827'}}>AI</Text></Text>
           </View>
 
-          {/* WELCOME TEXT */}
           <View style={styles.textSection}>
             <Text style={styles.title}>Start your journey</Text>
             <Text style={styles.subtitle}>
@@ -100,9 +136,7 @@ export default function SignupScreen({ navigation }: any) {
             </Text>
           </View>
 
-          {/* THE FORM CARD */}
           <View style={styles.formContainer}>
-            
             {/* Input 1: Name */}
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>FULL NAME</Text>
@@ -110,7 +144,7 @@ export default function SignupScreen({ navigation }: any) {
                 <Ionicons name="person-outline" size={20} color={isFocused === 'name' ? '#D94E28' : '#9CA3AF'} />
                 <TextInput 
                   style={styles.textInput}
-                  placeholder="Deepith N"
+                  placeholder="John Doe"
                   placeholderTextColor="#9CA3AF"
                   onFocus={() => setIsFocused('name')}
                   onBlur={() => setIsFocused(null)}
@@ -156,14 +190,17 @@ export default function SignupScreen({ navigation }: any) {
               </View>
             </View>
 
+            {/* ✅ UPDATED BUTTON: Calls handleSignup and shows spinner */}
             <Button 
-              label="Create Account" 
-              onPress={() => navigation.navigate('Main')} 
+              label={loading ? "" : "Create Account"} 
+              onPress={handleSignup} 
               style={styles.mainBtn}
-            />
+              disabled={loading}
+            >
+              {loading && <ActivityIndicator color="#FFF" />}
+            </Button>
           </View>
 
-          {/* FOOTER */}
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
             <Text style={styles.footerLink}>
               Already have an account? <Text style={styles.linkText}>Sign In</Text>
@@ -176,20 +213,18 @@ export default function SignupScreen({ navigation }: any) {
   );
 }
 
+// ... styles remain the same ...
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F9FAFB' },
   scrollContent: { padding: 24, paddingTop: Platform.OS === 'ios' ? 60 : 40 },
   bokeh: { position: 'absolute', borderRadius: 1000, opacity: 0.4 },
-
   brandHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   miniLogo: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#D94E28', alignItems: 'center', justifyContent: 'center', marginRight: 12, transform: [{ rotate: '-8deg' }] },
   miniBrandText: { fontSize: 18, fontWeight: '800', color: '#D94E28' },
-
   textSection: { marginBottom: 32 },
   title: { fontSize: 34, fontWeight: '900', color: '#111827', letterSpacing: -1 },
   subtitle: { fontSize: 16, color: '#6B7280', marginTop: 6, lineHeight: 22 },
   highlight: { color: '#D94E28', fontWeight: 'bold' },
-
   formContainer: { gap: 20 },
   inputWrapper: { gap: 8 },
   inputLabel: { fontSize: 11, fontWeight: '800', color: '#9CA3AF', letterSpacing: 1 },
@@ -206,9 +241,7 @@ const styles = StyleSheet.create({
   },
   inputBoxFocused: { borderColor: '#D94E28', backgroundColor: '#FFF' },
   textInput: { flex: 1, marginLeft: 12, fontSize: 16, color: '#111827', fontWeight: '500' },
-
-  mainBtn: { height: 62, borderRadius: 20, backgroundColor: '#111827', marginTop: 10 },
-  
+  mainBtn: { height: 62, borderRadius: 20, backgroundColor: '#111827', marginTop: 10, justifyContent: 'center', alignItems: 'center' },
   footerLink: { textAlign: 'center', marginTop: 30, color: '#6B7280', fontSize: 15 },
   linkText: { color: '#D94E28', fontWeight: 'bold' }
 });

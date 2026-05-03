@@ -1,6 +1,6 @@
 /**
  * screens/JobRecommendationsScreen.tsx
- * Updated to support navigation to the Roadmap screen upon role selection.
+ * Optimized: Fixed variable redeclaration and removed dead analysisData references.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -26,27 +26,33 @@ export const JobRecommendationsScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   
-  const { analysisData } = route.params;
+  // ✅ Correctly extracting skills and candidateName from route params
+  const { skills, candidateName } = route.params;
   
   const [isLoading, setIsLoading] = useState(true);
   const [jobMatch, setJobMatch] = useState<any>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const userSkills = analysisData?.parsedData?.skills || [];
+      // ✅ FIX: Use skills directly from params
+      const userSkills = skills || [];
+      console.log("USER SKILLS:", userSkills);
+
+      // ✅ FIX: Single declaration of matches
       const matches = generateRoleMatches(userSkills);
-      
+      console.log("MATCH RESULTS:", matches);
+
       setJobMatch({
-        candidateName: analysisData?.parsedData?.name || 'Candidate',
+        candidateName: candidateName || "Candidate",
         recommendations: matches
       });
+
       setIsLoading(false);
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [analysisData]);
+  }, [skills, candidateName]);
 
-  // ✅ FIXED: Correct navigation to Roadmap screen
   const handleJobSelect = (job: any) => {
     navigation.navigate('Roadmap', { role: job });
   };
@@ -68,13 +74,15 @@ export const JobRecommendationsScreen: React.FC = () => {
           </Text>
         </View>
 
-        {!isLoading && jobMatch && <SummaryBanner jobMatch={jobMatch} />}
+        {!isLoading && jobMatch && jobMatch.recommendations?.length > 0 && (
+          <SummaryBanner jobMatch={jobMatch} />
+        )}
 
         {isLoading ? (
-          <>
+          <View style={{ marginTop: 10 }}>
             <SkeletonCard />
             <SkeletonCard />
-          </>
+          </View>
         ) : jobMatch?.recommendations?.length ? (
           <>
             {jobMatch.recommendations.map((job: any, index: number) => (
@@ -82,20 +90,27 @@ export const JobRecommendationsScreen: React.FC = () => {
                 key={index}
                 job={{
                   ...job,
-                  relevanceScore: job.match_score,
-                  reasoning: job.reason,
+                  relevanceScore: job.match_score || job.matchScore,
+                  reasoning: job.reason || job.reasoning,
                   matchedSkills: job.matched_skills,
                   missingSkills: job.missing_skills
                 }}
                 index={index}
-                onPress={handleJobSelect} // ✅ Passing function
+                onPress={handleJobSelect}
               />
             ))}
           </>
         ) : (
           <View style={styles.errorBox}>
-            <Text style={{ marginBottom: 12 }}>No matching roles found.</Text>
-            <Button label="Go Back" onPress={() => navigation.goBack()} />
+            <Text style={styles.errorLabel}>No matches found</Text>
+            <Text style={styles.errorSub}>
+              We couldn't find roles matching your current skill set.
+            </Text>
+            <Button 
+              style={{ marginTop: 24 }} 
+              label="Update Skills" 
+              onPress={() => navigation.goBack()} 
+            />
           </View>
         )}
       </ScrollView>
@@ -103,7 +118,7 @@ export const JobRecommendationsScreen: React.FC = () => {
   );
 };
 
-// Summary Banner Logic
+// Summary Banner
 const SummaryBanner: React.FC<{ jobMatch: any }> = ({ jobMatch }) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(10)).current;
@@ -129,7 +144,7 @@ const SummaryBanner: React.FC<{ jobMatch: any }> = ({ jobMatch }) => {
               </View>
             ))
           ) : (
-            <Text style={styles.subText}>You have all required skills for this role! 🚀</Text>
+            <Text style={styles.subText}>You're all set for this role! 🚀</Text>
           )}
         </View>
       </View>
@@ -173,7 +188,9 @@ const styles = StyleSheet.create({
   redChip: { backgroundColor: '#FEE2E2', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   redChipText: { color: '#991B1B', fontSize: 12, fontWeight: '500' },
   jobCardWrapper: { marginBottom: 16, padding: 0, overflow: 'hidden' },
-  errorBox: { alignItems: 'center', padding: 40 },
+  errorBox: { alignItems: 'center', padding: 40, marginTop: 20 },
+  errorLabel: { fontSize: 18, fontWeight: 'bold', color: Colors.textPrimary },
+  errorSub: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginTop: 8 }
 });
 
 export default JobRecommendationsScreen;
