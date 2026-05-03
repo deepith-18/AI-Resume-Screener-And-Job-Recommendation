@@ -126,6 +126,24 @@ const analyzeResumeById = asyncHandler(async (req, res) => {
   });
 });
 
+// ✅ DELETE: Remove an uploaded resume and its stored file
+const deleteResumeById = asyncHandler(async (req, res) => {
+  const { resumeId } = req.params;
+
+  const resume = await Resume.findById(resumeId);
+  if (!resume) {
+    return res.status(404).json({ error: 'Resume not found' });
+  }
+
+  if (resume.filePath && fs.existsSync(resume.filePath)) {
+    fs.unlinkSync(resume.filePath);
+  }
+
+  await Resume.findByIdAndDelete(resumeId);
+
+  res.json({ success: true, data: { deletedId: resumeId } });
+});
+
 // GET ONE
 const getResume = asyncHandler(async (req, res) => {
   const resume = await Resume.findById(req.params.resumeId);
@@ -147,4 +165,5 @@ module.exports = {
   analyzeResumeById,
   getResume,
   listResumes,
+  deleteResumeById,
 };
